@@ -23,13 +23,13 @@ const FPS = 60;
 const windowWidth = 800;
 const windowHeight = 400;
 
-pub fn main() anyerror!void {
+pub fn main() !void {
     // Initialization
     //--------------------------------------------------------------------------------------
 
     rl.setConfigFlags(.{ .window_highdpi = true });
 
-    rl.initWindow(windowWidth, windowHeight, "raylib [text] example - text formatting");
+    rl.initWindow(windowWidth, windowHeight, "Space Invaders!");
     rl.beginDrawing();
     rl.clearBackground(rl.Color.ray_white);
     rl.endDrawing();
@@ -56,14 +56,16 @@ fn drawKeyPress() !void {
     }
 }
 
-fn detectWall(rec: *rl.Rectangle) !void {
+fn detectWall(rec: *rl.Rectangle) !bool {
     const screen_width: f32 = @floatFromInt(rl.getScreenWidth());
 
     if ((rec.x + (rec.width / 2)) >= screen_width) {
         rec.x = screen_width - rec.width;
+        return true;
     } else if (rec.x <= (rec.width) / 2) {
         rec.x = (rec.width) / 2;
-    }
+        return true;
+    } else return false;
 }
 
 fn handleSpaceshipMovement(rec: *rl.Rectangle, velocity: *f32) !void {
@@ -88,6 +90,36 @@ const Direction = enum(i2) {
     L = -1,
     R = 1,
     None = 0,
+};
+
+const Missile = struct {
+    const vel: f32 = 0.2;
+    const height = 10;
+    const width = 5;
+    player: ?*Player = null,
+    pos: ?rl.Vector2 = null,
+    shot: bool = false,
+
+    fn handleMissileFire(self: *Missile) !void {
+        if (rl.isKeyPressed(rl.KeyboardKey.space)) {
+            try self.shoot();
+        } else try self.handleShotMovement();
+    }
+
+    fn shoot(self: *Missile) !void {
+        self.pos = .{ .x = self.player.?.rec.x, .y = self.player.?.rec.y - self.player.?.rec.height };
+        self.shot = true;
+        rl.drawRectangle(@intFromFloat(self.pos.?.x), @intFromFloat(self.pos.?.y), Missile.width, Missile.height, rl.Color.white);
+    }
+
+    fn handleShotMovement(self: *Missile) !void {
+        if (self.shot == true) {
+            std.debug.assert(self.player != null);
+            std.debug.assert(self.pos != null);
+            self.pos.?.y -= Missile.vel;
+            rl.drawRectangle(@intFromFloat(self.pos.?.x), @intFromFloat(self.pos.?.y), Missile.width, Missile.height, rl.Color.white);
+        }
+    }
 };
 
 const Player = struct {
@@ -125,8 +157,6 @@ fn drawBlocks(block_pixel_size: u32, block_arr: []u32) !void {
     }
 }
 
-// TODO: tidy up
-
 const enableDrawKeyPress = false;
 const velocity_default = 0.1;
 const velocity_delta = 0.000255;
@@ -154,17 +184,13 @@ fn gameLoop(frame_per_second: u8) !void {
             .y = windowHeight,
         },
     };
-    // player.rec = dest_rec;
+
+    var missile: Missile = .{ .player = &player };
 
     var sprite_frame_counter: f32 = 0.0;
 
     const animation_frame_rate: i32 = 400;
     var animation_frame_counter: i32 = 0;
-
-    // var velocity: f32 = velocity_default;
-    var missile = rl.Vector2{ .x = player.rec.x - 3, .y = player.rec.y - 20.0 };
-    const missile_speed: f32 = 0.1;
-    var missile_shot = false;
 
     const block_pixel_size: u32 = 32; // 32*32
 
@@ -177,8 +203,9 @@ fn gameLoop(frame_per_second: u8) !void {
         rl.clearBackground(rl.Color.black);
         if (enableDrawKeyPress) try drawKeyPress();
 
-        try detectWall(&player.rec);
+        _ = try detectWall(&player.rec);
         try player.handleSpaceshipMovement();
+        try missile.handleMissileFire();
 
         rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .black);
 
@@ -189,16 +216,6 @@ fn gameLoop(frame_per_second: u8) !void {
 
             source_rec.x = spaceship_sprite_width * sprite_num;
             sprite_frame_counter += 1;
-        }
-
-        if (rl.isKeyPressed(rl.KeyboardKey.space)) {
-            missile_shot = true;
-            missile.y = player.rec.y - player.rec.height;
-            missile.x = player.rec.x;
-        }
-        if (missile_shot) {
-            rl.drawRectangle(@intFromFloat(missile.x), @intFromFloat(missile.y), 5, 20, rl.Color.white);
-            missile.y -= missile_speed;
         }
 
         rl.drawTexturePro(
