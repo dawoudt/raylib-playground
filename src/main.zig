@@ -1,13 +1,14 @@
 // A raylib port of https://github.com/raysan5/raylib/blob/master/examples/text/text_format_text.c
 
 // Build Space Invaders
-// Steps:
+// Tasks:
 //  Done - Get spaceship sprite to show up
 //  Done - Get spaceship to move when direction keys are pressed
 //  Done - Draw obstacles using an array.
 //  Done - Get One bullet to shoot from space ship to work
-//       - Get multiple bullets to shoot from ship
+//  Done - Get multiple bullets to shoot from ship
 //       - Get collision detection to work with bullets and obstacles
+//       - Refactor missiles to be inside player (ship)
 
 const rl = @import("raylib");
 const std = @import("std");
@@ -30,12 +31,13 @@ pub fn main() !void {
     rl.setConfigFlags(.{ .window_highdpi = true });
 
     rl.initWindow(windowWidth, windowHeight, "Space Invaders!");
-    rl.beginDrawing();
-    rl.clearBackground(rl.Color.ray_white);
-    rl.endDrawing();
-
     defer rl.closeWindow(); // Close window and OpenGL context
+
     rl.setWindowState(.{ .window_resizable = true });
+    rl.clearBackground(rl.Color.ray_white);
+
+    rl.endDrawing(); // Need this here or inits weird :/
+
     try gameLoop(FPS);
 }
 
@@ -96,7 +98,6 @@ const Missile = struct {
     const vel: f32 = 0.2;
     const height = 10;
     const width = 5;
-    player: ?*Player = null,
     pos: ?rl.Vector2 = null,
     shot: bool = false,
 
@@ -107,14 +108,12 @@ const Missile = struct {
     }
 
     fn shoot(self: *Missile) !void {
-        self.pos = .{ .x = self.player.?.rec.x, .y = self.player.?.rec.y - self.player.?.rec.height };
         self.shot = true;
         rl.drawRectangle(@intFromFloat(self.pos.?.x), @intFromFloat(self.pos.?.y), Missile.width, Missile.height, rl.Color.white);
     }
 
     fn handleShotMovement(self: *Missile) !void {
         if (self.shot == true) {
-            std.debug.assert(self.player != null);
             std.debug.assert(self.pos != null);
             self.pos.?.y -= Missile.vel;
             rl.drawRectangle(@intFromFloat(self.pos.?.x), @intFromFloat(self.pos.?.y), Missile.width, Missile.height, rl.Color.white);
@@ -122,25 +121,25 @@ const Missile = struct {
     }
 };
 
-const Player = struct {
+const Ship = struct {
     const velocity_default = 0.1;
     const velocity_delta = 0.000255;
     rec: rl.Rectangle,
-    vel: f32 = Player.velocity_default,
+    vel: f32 = Ship.velocity_default,
 
-    pub fn handleSpaceshipMovement(self: *Player) !void {
+    pub fn handleSpaceshipMovement(self: *Ship) !void {
         // var dir = 0;
         if (rl.isKeyUp(rl.KeyboardKey.right) and rl.isKeyUp(rl.KeyboardKey.left))
-            self.vel = Player.velocity_default;
+            self.vel = Ship.velocity_default;
 
         if (rl.isKeyDown(rl.KeyboardKey.right)) {
             const dir: f32 = @floatFromInt(@intFromEnum(Direction.R));
-            self.vel += Player.velocity_delta;
+            self.vel += Ship.velocity_delta;
             self.rec.x += self.vel * dir;
         }
         if (rl.isKeyDown(rl.KeyboardKey.left)) {
             const dir: f32 = @floatFromInt(@intFromEnum(Direction.L));
-            self.vel += Player.velocity_delta;
+            self.vel += Ship.velocity_delta;
             self.rec.x += self.vel * dir;
         }
     }
@@ -176,7 +175,7 @@ fn gameLoop(frame_per_second: u8) !void {
         .y = 0,
     };
 
-    var player: Player = .{
+    var player_ship: Ship = .{
         .rec = .{
             .height = 32,
             .width = 32,
@@ -185,7 +184,7 @@ fn gameLoop(frame_per_second: u8) !void {
         },
     };
 
-    var missile: Missile = .{ .player = &player };
+    var missile_array = try std.BoundedArray(Missile, 1024 * 10).init(0);
 
     var sprite_frame_counter: f32 = 0.0;
 
@@ -203,14 +202,25 @@ fn gameLoop(frame_per_second: u8) !void {
         rl.clearBackground(rl.Color.black);
         if (enableDrawKeyPress) try drawKeyPress();
 
-        _ = try detectWall(&player.rec);
-        try player.handleSpaceshipMovement();
-        try missile.handleMissileFire();
+        _ = try detectWall(&player_ship.rec);
+        try player_ship.handleSpaceshipMovement();
+
+        if (rl.isKeyPressed(rl.KeyboardKey.space)) {
+            try missile_array.append(blk: {
+                var missile = Missile{ .pos = .{ .x = player_ship.rec.x, .y = player_ship.rec.y - player_ship.rec.height } };
+                try missile.shoot();
+                break :blk missile;
+            });
+        }
+        for (missile_array.slice()) |*missile| {
+            try missile.handleShotMovement();
+        }
 
         rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .black);
 
         try drawBlocks(block_pixel_size, &block_arr);
 
+        // TODO: Move ship animation logic inside Ship.
         if (@mod(animation_frame_counter, animation_frame_rate) == 0) {
             const sprite_num: f32 = @as(f32, @mod(sprite_frame_counter, 4));
 
@@ -221,8 +231,8 @@ fn gameLoop(frame_per_second: u8) !void {
         rl.drawTexturePro(
             spaceship,
             source_rec,
-            player.rec,
-            .{ .x = player.rec.width / 2, .y = player.rec.height },
+            player_ship.rec,
+            .{ .x = player_ship.rec.width / 2, .y = player_ship.rec.height },
             0,
             rl.Color.white,
         );
