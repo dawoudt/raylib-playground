@@ -2,13 +2,17 @@
 
 // Build Space Invaders
 // Tasks:
+//       - Tests!
 //  Done - Get spaceship sprite to show up
 //  Done - Get spaceship to move when direction keys are pressed
 //  Done - Draw obstacles using an array.
 //  Done - Get One bullet to shoot from space ship to work
 //  Done - Get multiple bullets to shoot from ship
+//       - Refactor missiles to be inside player ship
 //       - Get collision detection to work with bullets and obstacles
-//       - Refactor missiles to be inside player (ship)
+//       - Implement damage/points logic when collision detection occurs between bullets and obstacles
+//       - Make obstacles move
+//       - Replace obstacle's default rectangle with animated invader sprite
 
 const rl = @import("raylib");
 const std = @import("std");
@@ -99,21 +103,15 @@ const Missile = struct {
     const height = 10;
     const width = 5;
     pos: ?rl.Vector2 = null,
-    shot: bool = false,
+    fired: bool = false,
 
-    fn handleMissileFire(self: *Missile) !void {
-        if (rl.isKeyPressed(rl.KeyboardKey.space)) {
-            try self.shoot();
-        } else try self.handleShotMovement();
-    }
-
-    fn shoot(self: *Missile) !void {
-        self.shot = true;
+    fn fire(self: *Missile) !void {
+        self.fired = true;
         rl.drawRectangle(@intFromFloat(self.pos.?.x), @intFromFloat(self.pos.?.y), Missile.width, Missile.height, rl.Color.white);
     }
 
-    fn handleShotMovement(self: *Missile) !void {
-        if (self.shot == true) {
+    fn move(self: *Missile) !void {
+        if (self.fired == true) {
             std.debug.assert(self.pos != null);
             self.pos.?.y -= Missile.vel;
             rl.drawRectangle(@intFromFloat(self.pos.?.x), @intFromFloat(self.pos.?.y), Missile.width, Missile.height, rl.Color.white);
@@ -208,12 +206,12 @@ fn gameLoop(frame_per_second: u8) !void {
         if (rl.isKeyPressed(rl.KeyboardKey.space)) {
             try missile_array.append(blk: {
                 var missile = Missile{ .pos = .{ .x = player_ship.rec.x, .y = player_ship.rec.y - player_ship.rec.height } };
-                try missile.shoot();
+                try missile.fire();
                 break :blk missile;
             });
         }
         for (missile_array.slice()) |*missile| {
-            try missile.handleShotMovement();
+            try missile.move();
         }
 
         rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .black);
