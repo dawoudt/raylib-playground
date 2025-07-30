@@ -62,14 +62,31 @@ fn drawKeyPress() !void {
     }
 }
 
-fn detectWall(rec: *rl.Rectangle) !bool {
+// TODO: Refactor this. Detect wall SHOULD NOT modify rec.
+//       It should just return true if wall is detected and false if not.
+//       The caller should then modify the rec position if needed.
+//       This would mean that we probably need more than a boolean returned.
+//       Probably need an enum to with Top, Bottom, Left, Right instead.
+
+fn detectWall(rec: *rl.Rectangle, stop_at_wall: bool) !bool {
     const screen_width: f32 = @floatFromInt(rl.getScreenWidth());
+    const screen_height: f32 = @floatFromInt(rl.getScreenHeight());
 
     if ((rec.x + (rec.width / 2)) >= screen_width) {
-        rec.x = screen_width - rec.width;
+        if (stop_at_wall)
+            rec.x = screen_width - rec.width;
         return true;
     } else if (rec.x <= (rec.width) / 2) {
-        rec.x = (rec.width) / 2;
+        if (stop_at_wall)
+            rec.x = (rec.width) / 2;
+        return true;
+    } else if ((rec.y + (rec.height / 2)) >= screen_height) {
+        if (stop_at_wall)
+            rec.y = screen_height - rec.height;
+        return true;
+    } else if (rec.y <= (rec.height) / 2) {
+        if (stop_at_wall)
+            rec.y = (rec.height) / 2;
         return true;
     } else return false;
 }
@@ -98,23 +115,33 @@ const Direction = enum(i2) {
     None = 0,
 };
 
+var POINTS: u32 = 0;
+
 const Missile = struct {
     const vel: f32 = 0.2;
+
     const height = 10;
     const width = 5;
-    pos: ?rl.Vector2 = null,
+    rec: ?rl.Rectangle = null,
     fired: bool = false,
+    wall_detected: bool = false,
 
     fn fire(self: *Missile) !void {
         self.fired = true;
-        rl.drawRectangle(@intFromFloat(self.pos.?.x), @intFromFloat(self.pos.?.y), Missile.width, Missile.height, rl.Color.white);
+        rl.drawRectangle(@intFromFloat(self.rec.?.x), @intFromFloat(self.rec.?.y), Missile.width, Missile.height, rl.Color.white);
     }
 
     fn move(self: *Missile) !void {
         if (self.fired == true) {
-            std.debug.assert(self.pos != null);
-            self.pos.?.y -= Missile.vel;
-            rl.drawRectangle(@intFromFloat(self.pos.?.x), @intFromFloat(self.pos.?.y), Missile.width, Missile.height, rl.Color.white);
+            std.debug.assert(self.rec != null);
+            self.rec.?.y -= Missile.vel;
+            if (try detectWall(&self.rec.?, false)) {
+                if (!self.wall_detected) POINTS += 1;
+                self.wall_detected = true;
+                self.rec.?.x = -1;
+                self.rec.?.y = -1;
+            }
+            rl.drawRectangle(@intFromFloat(self.rec.?.x), @intFromFloat(self.rec.?.y), Missile.width, Missile.height, rl.Color.white);
         }
     }
 };
@@ -139,7 +166,7 @@ const Ship = struct {
     fn handleWeapons(self: *Ship) !void {
         if (rl.isKeyPressed(rl.KeyboardKey.space)) {
             try self.weapons_bay.?.append(blk: {
-                var missile = Missile{ .pos = .{ .x = self.rec.x, .y = self.rec.y - self.rec.height } };
+                var missile = Missile{ .rec = .{ .x = self.rec.x, .y = self.rec.y - self.rec.height, .width = Missile.width, .height = Missile.height } };
                 try missile.fire();
                 break :blk missile;
             });
@@ -226,7 +253,10 @@ fn gameLoop(frame_per_second: u8) !void {
         if (enableDrawKeyPress) try drawKeyPress();
         rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
 
-        _ = try detectWall(&player_ship.rec);
+        // FIX: This is just a POC. No points should be given for shooting the top.
+        rl.drawText(rl.textFormat("Points: %d ", .{POINTS}), 0, 20, 20, .white);
+
+        _ = try detectWall(&player_ship.rec, true);
         try player_ship.handleSpaceshipMovement();
         try player_ship.handleWeapons();
 
