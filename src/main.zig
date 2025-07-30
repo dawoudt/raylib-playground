@@ -119,11 +119,35 @@ const Missile = struct {
     }
 };
 
+// TODO: re write weapons bay logic so that we have an array with the initial number of Missiles.
+//       Then when fired, they move into a fired array that we iterate through and update the y pos.
+//       This would make much more sense logically compared to what we have now. We could then use initWeaponsBay()
+//       to add the initial number of missiles as well.
+
 const Ship = struct {
     const velocity_default = 0.1;
     const velocity_delta = 0.000255;
     rec: rl.Rectangle,
     vel: f32 = Ship.velocity_default,
+    weapons_bay: ?std.BoundedArray(Missile, 1024 * 10) = null,
+
+    fn initWeaponsBay(self: *Ship) !void {
+        if (self.weapons_bay == null)
+            self.weapons_bay = try std.BoundedArray(Missile, 1024 * 10).init(0);
+    }
+
+    fn handleWeapons(self: *Ship) !void {
+        if (rl.isKeyPressed(rl.KeyboardKey.space)) {
+            try self.weapons_bay.?.append(blk: {
+                var missile = Missile{ .pos = .{ .x = self.rec.x, .y = self.rec.y - self.rec.height } };
+                try missile.fire();
+                break :blk missile;
+            });
+        }
+        for (self.weapons_bay.?.slice()) |*missile| {
+            try missile.move();
+        }
+    }
 
     pub fn handleSpaceshipMovement(self: *Ship) !void {
         // var dir = 0;
@@ -182,7 +206,8 @@ fn gameLoop(frame_per_second: u8) !void {
         },
     };
 
-    var missile_array = try std.BoundedArray(Missile, 1024 * 10).init(0);
+    // var missile_array = try std.BoundedArray(Missile, 1024 * 10).init(0);
+    try player_ship.initWeaponsBay();
 
     var sprite_frame_counter: f32 = 0.0;
 
@@ -199,22 +224,11 @@ fn gameLoop(frame_per_second: u8) !void {
 
         rl.clearBackground(rl.Color.black);
         if (enableDrawKeyPress) try drawKeyPress();
+        rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
 
         _ = try detectWall(&player_ship.rec);
         try player_ship.handleSpaceshipMovement();
-
-        if (rl.isKeyPressed(rl.KeyboardKey.space)) {
-            try missile_array.append(blk: {
-                var missile = Missile{ .pos = .{ .x = player_ship.rec.x, .y = player_ship.rec.y - player_ship.rec.height } };
-                try missile.fire();
-                break :blk missile;
-            });
-        }
-        for (missile_array.slice()) |*missile| {
-            try missile.move();
-        }
-
-        rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .black);
+        try player_ship.handleWeapons();
 
         try drawBlocks(block_pixel_size, &block_arr);
 
