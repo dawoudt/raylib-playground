@@ -8,9 +8,9 @@
 //  Done - Draw obstacles using an array.
 //  Done - Get One bullet to shoot from space ship to work
 //  Done - Get multiple bullets to shoot from ship
-//       - Refactor missiles to be inside player ship
-//       - Get collision detection to work with bullets and obstacles
-//       - Implement damage/points logic when collision detection occurs between bullets and obstacles
+//  Done - Refactor missiles to be inside player ship
+//  Done - Get collision detection to work with bullets and obstacles
+//  Done - Implement damage/points logic when collision detection occurs between bullets and obstacles
 //       - Make obstacles move
 //       - Replace obstacle's default rectangle with animated invader sprite
 
@@ -309,13 +309,13 @@ fn gameLoop(frame_per_second: u8) !void {
 
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         defer rl.endDrawing();
-        rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
         animation_frame_counter += 1;
 
         rl.clearBackground(rl.Color.black);
+        rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
+
         if (enableDrawKeyPress) try drawKeyPress();
 
-        rl.drawText(rl.textFormat("Points: %d ", .{POINTS}), 0, 20, 20, .white);
         rl.drawText(rl.textFormat("Points: %d ", .{POINTS}), 0, 20, 20, .white);
 
         _ = try detectWall(&player_ship.rec, true);
