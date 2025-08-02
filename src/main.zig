@@ -26,7 +26,7 @@ fn log(comptime level: rl.TraceLogLevel, comptime text: []const u8, args: anytyp
 const FPS = 60;
 
 const windowWidth = 800;
-const windowHeight = 400;
+const windowHeight = 450;
 
 pub fn main() !void {
     // Initialization
@@ -39,7 +39,6 @@ pub fn main() !void {
 
     rl.setWindowState(.{ .window_resizable = true });
     rl.clearBackground(rl.Color.ray_white);
-
     rl.endDrawing(); // Need this here or inits weird :/
 
     try gameLoop(FPS);
@@ -76,19 +75,26 @@ fn detectWall(rec: *rl.Rectangle, stop_at_wall: bool) !bool {
         if (stop_at_wall)
             rec.x = screen_width - rec.width;
         return true;
-    } else if (rec.x <= (rec.width) / 2) {
+    }
+
+    if (rec.x <= (rec.width) / 2) {
         if (stop_at_wall)
             rec.x = (rec.width) / 2;
         return true;
-    } else if ((rec.y + (rec.height / 2)) >= screen_height) {
+    }
+
+    if ((rec.y + (rec.height / 2)) >= screen_height) {
         if (stop_at_wall)
             rec.y = screen_height - rec.height;
         return true;
-    } else if (rec.y <= (rec.height) / 2) {
+    }
+
+    if (rec.y <= (rec.height) / 2) {
         if (stop_at_wall)
             rec.y = (rec.height) / 2;
         return true;
-    } else return false;
+    }
+    return false;
 }
 
 fn handleSpaceshipMovement(rec: *rl.Rectangle, velocity: *f32) !void {
@@ -124,7 +130,8 @@ const Missile = struct {
     const width = 5;
     rec: ?rl.Rectangle = null,
     fired: bool = false,
-    wall_detected: bool = false,
+    wall_hit: bool = false,
+    obstacle_hit: bool = false,
 
     fn fire(self: *Missile) !void {
         self.fired = true;
@@ -136,10 +143,18 @@ const Missile = struct {
             std.debug.assert(self.rec != null);
             self.rec.?.y -= Missile.vel;
             if (try detectWall(&self.rec.?, false)) {
-                if (!self.wall_detected) POINTS += 1;
-                self.wall_detected = true;
-                self.rec.?.x = -1;
-                self.rec.?.y = -1;
+                self.wall_hit = true;
+            }
+            for (obstacles_array.slice(), 0..) |*o, index| {
+                const collided = rl.checkCollisionRecs(self.rec.?, o.rec);
+                if (collided) {
+                    if (!self.obstacle_hit) POINTS += 1;
+                    self.obstacle_hit = true;
+                    try o.hit();
+                    if (o.dead) {
+                        _ = obstacles_array.orderedRemove(index);
+                    }
+                }
             }
             rl.drawRectangle(@intFromFloat(self.rec.?.x), @intFromFloat(self.rec.?.y), Missile.width, Missile.height, rl.Color.white);
         }
@@ -163,16 +178,20 @@ const Ship = struct {
             self.weapons_bay = try std.BoundedArray(Missile, 1024 * 10).init(0);
     }
 
-    fn handleWeapons(self: *Ship) !void {
+    fn handleWeaponFire(self: *Ship) !void {
         if (rl.isKeyPressed(rl.KeyboardKey.space)) {
             try self.weapons_bay.?.append(blk: {
-                var missile = Missile{ .rec = .{ .x = self.rec.x, .y = self.rec.y - self.rec.height, .width = Missile.width, .height = Missile.height } };
+                var missile = Missile{ .rec = .{ .x = self.rec.x - 2, .y = self.rec.y - self.rec.height, .width = Missile.width, .height = Missile.height } };
                 try missile.fire();
                 break :blk missile;
             });
         }
-        for (self.weapons_bay.?.slice()) |*missile| {
-            try missile.move();
+
+        for (self.weapons_bay.?.slice(), 0..) |*missile, index| {
+            var m: *Missile = missile;
+            try m.move();
+            if (m.obstacle_hit or m.wall_hit)
+                _ = self.weapons_bay.?.orderedRemove(index);
         }
     }
 
@@ -194,20 +213,66 @@ const Ship = struct {
     }
 };
 
-fn drawBlocks(block_pixel_size: u32, block_arr: []u32) !void {
+const Obstacle = struct {
+    rec: rl.Rectangle,
+    hit_count: u2 = 0,
+    dead: bool = false,
+
+    fn hit(self: *Obstacle) !void {
+        if (self.hit_count >= 2) self.dead = true else self.hit_count += 1;
+    }
+};
+
+var block_array = [_][25]u32{
+    [_]u32{ 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1 },
+    [_]u32{ 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1 },
+};
+var obstacles_array = std.BoundedArray(Obstacle, 1024).init(0) catch {};
+
+const pixel_size: u32 = 32; // 32*32
+
+fn generateObstacles(block_pixel_size: u32, block_arr: anytype) !void {
     const base_starting_x = 0.0;
     var current_x: u32 = base_starting_x;
 
-    for (block_arr) |val| {
-        if (val == 1)
-            rl.drawRectangle(@intCast(current_x), 100, @intCast(block_pixel_size), @intCast(block_pixel_size), rl.Color.dark_gray);
-        current_x += block_pixel_size;
+    var y_delta: u32 = 1;
+    for (block_arr) |row| {
+        defer current_x = base_starting_x;
+        defer y_delta += 1;
+        for (row) |val| {
+            defer current_x += block_pixel_size;
+            if (val == 1) {
+                try obstacles_array.append(.{
+                    .rec = .{
+                        .x = @floatFromInt(current_x),
+                        .y = @floatFromInt((y_delta + 1) * block_pixel_size),
+                        .height = @floatFromInt(block_pixel_size),
+                        .width = @floatFromInt(block_pixel_size),
+                    },
+                });
+            }
+        }
+
+        // rl.drawRectangle(@intCast(current_x), 100, @intCast(block_pixel_size), @intCast(block_pixel_size), rl.Color.dark_gray);
+    }
+}
+
+fn drawBlocks(obstacles: []Obstacle) !void {
+    for (obstacles) |obstacle| {
+        const x: i32 = @intFromFloat(obstacle.rec.x);
+        const y: i32 = @intFromFloat(obstacle.rec.y);
+        const width: i32 = @intFromFloat(obstacle.rec.width);
+        const height: i32 = @intFromFloat(obstacle.rec.height);
+
+        rl.drawRectangle(x, y, width, height, rl.Color.dark_gray);
     }
 }
 
 const enableDrawKeyPress = false;
 const velocity_default = 0.1;
 const velocity_delta = 0.000255;
+
+var initialized = false;
 
 fn gameLoop(frame_per_second: u8) !void {
     rl.setTargetFPS(frame_per_second);
@@ -240,27 +305,24 @@ fn gameLoop(frame_per_second: u8) !void {
 
     const animation_frame_rate: i32 = 400;
     var animation_frame_counter: i32 = 0;
-
-    const block_pixel_size: u32 = 32; // 32*32
-
-    var block_arr = [_]u32{ 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1 };
+    try generateObstacles(pixel_size, block_array);
 
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         defer rl.endDrawing();
+        rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
         animation_frame_counter += 1;
 
         rl.clearBackground(rl.Color.black);
         if (enableDrawKeyPress) try drawKeyPress();
-        rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
 
-        // FIX: This is just a POC. No points should be given for shooting the top.
+        rl.drawText(rl.textFormat("Points: %d ", .{POINTS}), 0, 20, 20, .white);
         rl.drawText(rl.textFormat("Points: %d ", .{POINTS}), 0, 20, 20, .white);
 
         _ = try detectWall(&player_ship.rec, true);
         try player_ship.handleSpaceshipMovement();
-        try player_ship.handleWeapons();
+        try player_ship.handleWeaponFire();
 
-        try drawBlocks(block_pixel_size, &block_arr);
+        try drawBlocks(obstacles_array.slice());
 
         // TODO: Move ship animation logic inside Ship.
         if (@mod(animation_frame_counter, animation_frame_rate) == 0) {
