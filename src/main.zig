@@ -13,6 +13,7 @@
 //  Done - Implement damage/points logic when collision detection occurs between bullets and obstacles
 //  Done - Make obstacles move
 //  Done - Replace obstacle's default rectangle with animated invader sprite
+//       - Add finish game state
 //       - Clean up/Reorganize
 
 const rl = @import("raylib");
