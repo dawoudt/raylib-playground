@@ -87,12 +87,28 @@ pub fn generateObstacles(block_pixel_size: u32, block_arr: anytype, obstacles: *
 }
 
 pub fn drawBlocks(obstacles: []Obstacle) void {
-    for (obstacles) |obstacle| {
-        const x: i32 = @intFromFloat(obstacle.rec.x);
-        const y: i32 = @intFromFloat(obstacle.rec.y);
-        const width: i32 = @intFromFloat(obstacle.rec.width);
-        const height: i32 = @intFromFloat(obstacle.rec.height);
+    for (obstacles) |*obstacle| {
+        // const x: i32 = @intFromFloat(obstacle.rec.x);
+        // const y: i32 = @intFromFloat(obstacle.rec.y);
+        // const width: i32 = @intFromFloat(obstacle.rec.width);
+        // const height: i32 = @intFromFloat(obstacle.rec.height);
+        // rl.drawRectangle(x, y, width, height, rl.Color.dark_gray);
 
-        rl.drawRectangle(x, y, width, height, rl.Color.dark_gray);
+        if (obstacle.texture == null) obstacle.texture = Obstacle.Texture.init();
+
+        rl.drawTexturePro(
+            obstacle.texture.?.src,
+            obstacle.texture.?.rec,
+            obstacle.rec,
+            .{ .x = 0, .y = 0 },
+            0,
+            rl.Color.white,
+        );
+    }
+}
+
+pub fn deinitObstacleTextures(obstacles: []Obstacle) void {
+    for (obstacles) |*obstacle| {
+        if (obstacle.texture != null) obstacle.texture.?.deinit();
     }
 }
