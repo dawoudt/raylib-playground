@@ -13,7 +13,7 @@
 //  Done - Implement damage/points logic when collision detection occurs between bullets and obstacles
 //  Done - Make obstacles move
 //  Done - Replace obstacle's default rectangle with animated invader sprite
-//       - Add finish game state
+//  Done - Add finish game state
 //       - Clean up/Reorganize
 
 const rl = @import("raylib");
@@ -148,6 +148,8 @@ const Ship = struct {
 var block_array = [_][25]u32{
     [_]u32{ 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0 },
     [_]u32{ 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0 },
+    // [_]u32{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
+    // [_]u32{ 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0 },
 };
 
 const obstacle_pixel_size: u32 = 32; // 32*32
@@ -196,41 +198,55 @@ fn gameLoop(frame_per_second: u8) !void {
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         defer rl.endDrawing();
         animation_frame_counter += 1;
+        if (obstacles_array.len == 0) {
+            rl.clearBackground(.black);
+            var out: [256]u8 = undefined;
+            const text = try std.fmt.bufPrintZ(&out, "You go {d} points!\nGame Over", .{POINTS});
+            const font = try rl.getFontDefault();
+            const font_size: f32 = 40;
+            const spacing: f32 = 1.0;
 
-        rl.clearBackground(rl.Color.black);
-        rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
+            const size = rl.measureTextEx(font, text, font_size, spacing);
+            const pos = rl.Vector2{ .x = @as(f32, @floatFromInt(windowWidth)) / 2.0, .y = @as(f32, @floatFromInt(windowHeight)) / 2.0 };
+            const origin = rl.Vector2{ .x = size.x / 2.0, .y = size.y / 2.0 };
 
-        if (enableDrawKeyPress) try utils.drawKeyPress();
+            rl.drawTextPro(font, text, pos, origin, 0.0, font_size, spacing, rl.Color.white);
+        } else {
+            rl.clearBackground(rl.Color.black);
+            rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
 
-        rl.drawText(rl.textFormat("Points: %d ", .{POINTS}), 0, 20, 20, .white);
+            if (enableDrawKeyPress) try utils.drawKeyPress();
 
-        _ = utils.detectWall(&player_ship.rec, true);
-        try player_ship.handleSpaceshipMovement();
-        try player_ship.handleWeaponFire();
+            rl.drawText(rl.textFormat("Points: %d ", .{POINTS}), 0, 20, 20, .white);
 
-        // TODO: Move ship animation logic inside Ship.
-        if (@mod(animation_frame_counter, ship_animation_frame_rate) == 0) {
-            const sprite_num: f32 = @as(f32, @mod(sprite_frame_counter, 4));
+            _ = utils.detectWall(&player_ship.rec, true);
+            try player_ship.handleSpaceshipMovement();
+            try player_ship.handleWeaponFire();
 
-            source_rec.x = spaceship_sprite_width * sprite_num;
-            sprite_frame_counter += 1;
-        }
-        utils.drawBlocks(obstacles_array.slice());
+            // TODO: Move ship animation logic inside Ship.
+            if (@mod(animation_frame_counter, ship_animation_frame_rate) == 0) {
+                const sprite_num: f32 = @as(f32, @mod(sprite_frame_counter, 4));
 
-        if (@mod(animation_frame_counter, obstacle_animation_frame_rate) == 0) {
-            for (obstacles_array.slice()) |*obstacle| {
-                var obs: *Obstacle = obstacle;
-                obs.move();
+                source_rec.x = spaceship_sprite_width * sprite_num;
+                sprite_frame_counter += 1;
             }
-        }
+            utils.drawBlocks(obstacles_array.slice());
 
-        rl.drawTexturePro(
-            spaceship,
-            source_rec,
-            player_ship.rec,
-            .{ .x = player_ship.rec.width / 2, .y = player_ship.rec.height / 2 },
-            0,
-            rl.Color.white,
-        );
+            if (@mod(animation_frame_counter, obstacle_animation_frame_rate) == 0) {
+                for (obstacles_array.slice()) |*obstacle| {
+                    var obs: *Obstacle = obstacle;
+                    obs.move();
+                }
+            }
+
+            rl.drawTexturePro(
+                spaceship,
+                source_rec,
+                player_ship.rec,
+                .{ .x = player_ship.rec.width / 2, .y = player_ship.rec.height / 2 },
+                0,
+                rl.Color.white,
+            );
+        }
     }
 }
