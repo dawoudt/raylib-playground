@@ -11,8 +11,9 @@
 //  Done - Refactor missiles to be inside player ship
 //  Done - Get collision detection to work with bullets and obstacles
 //  Done - Implement damage/points logic when collision detection occurs between bullets and obstacles
-//       - Make obstacles move
-//       - Replace obstacle's default rectangle with animated invader sprite
+//  Done - Make obstacles move
+//  Done - Replace obstacle's default rectangle with animated invader sprite
+//       - Clean up/Reorganize
 
 const rl = @import("raylib");
 const std = @import("std");
@@ -144,11 +145,11 @@ const Ship = struct {
 // Used for generating obstacles
 
 var block_array = [_][25]u32{
-    [_]u32{ 1, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 1 },
-    [_]u32{ 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 1 },
+    [_]u32{ 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0 },
+    [_]u32{ 0, 0, 0, 0, 1, 1, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0 },
 };
 
-const pixel_size: u32 = 32; // 32*32
+const obstacle_pixel_size: u32 = 32; // 32*32
 
 const enableDrawKeyPress = false;
 const velocity_default = 0.1;
@@ -160,7 +161,8 @@ fn gameLoop(frame_per_second: u8) !void {
     rl.setTargetFPS(frame_per_second);
     rl.beginDrawing();
     defer rl.endDrawing();
-    const spaceship = try rl.loadTexture("assets/textures/spaceship.png");
+    const spaceship = try rl.loadTexture("assets/textures/inverted_spaceship.png");
+    defer rl.unloadTexture(spaceship);
     const spaceship_sprite_width: f32 = @floatFromInt(@divExact(spaceship.width, 4));
     const spaceship_sprite_height: f32 = @floatFromInt(spaceship.height);
 
@@ -173,8 +175,8 @@ fn gameLoop(frame_per_second: u8) !void {
 
     var player_ship: Ship = .{
         .rec = .{
-            .height = 32,
-            .width = 32,
+            .height = 48,
+            .width = 48,
             .x = (windowWidth / 2),
             .y = windowHeight,
         },
@@ -184,9 +186,11 @@ fn gameLoop(frame_per_second: u8) !void {
 
     var sprite_frame_counter: f32 = 0.0;
 
-    const animation_frame_rate: i32 = 400;
-    var animation_frame_counter: i32 = 0;
-    try utils.generateObstacles(pixel_size, block_array, &obstacles_array);
+    const ship_animation_frame_rate: u32 = 400;
+    const obstacle_animation_frame_rate: u32 = 1600;
+    var animation_frame_counter: u32 = 0;
+    try utils.generateObstacles(obstacle_pixel_size, block_array, &obstacles_array);
+    defer utils.deinitObstacleTextures(obstacles_array.slice());
 
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         defer rl.endDrawing();
@@ -203,21 +207,27 @@ fn gameLoop(frame_per_second: u8) !void {
         try player_ship.handleSpaceshipMovement();
         try player_ship.handleWeaponFire();
 
-        utils.drawBlocks(obstacles_array.slice());
-
         // TODO: Move ship animation logic inside Ship.
-        if (@mod(animation_frame_counter, animation_frame_rate) == 0) {
+        if (@mod(animation_frame_counter, ship_animation_frame_rate) == 0) {
             const sprite_num: f32 = @as(f32, @mod(sprite_frame_counter, 4));
 
             source_rec.x = spaceship_sprite_width * sprite_num;
             sprite_frame_counter += 1;
+        }
+        utils.drawBlocks(obstacles_array.slice());
+
+        if (@mod(animation_frame_counter, obstacle_animation_frame_rate) == 0) {
+            for (obstacles_array.slice()) |*obstacle| {
+                var obs: *Obstacle = obstacle;
+                obs.move();
+            }
         }
 
         rl.drawTexturePro(
             spaceship,
             source_rec,
             player_ship.rec,
-            .{ .x = player_ship.rec.width / 2, .y = player_ship.rec.height },
+            .{ .x = player_ship.rec.width / 2, .y = player_ship.rec.height / 2 },
             0,
             rl.Color.white,
         );
