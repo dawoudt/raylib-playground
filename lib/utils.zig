@@ -81,19 +81,11 @@ pub fn generateObstacles(block_pixel_size: u32, block_arr: anytype, obstacles: *
                 });
             }
         }
-
-        // rl.drawRectangle(@intCast(current_x), 100, @intCast(block_pixel_size), @intCast(block_pixel_size), rl.Color.dark_gray);
     }
 }
 
 pub fn drawBlocks(obstacles: []Obstacle) void {
     for (obstacles) |*obstacle| {
-        // const x: i32 = @intFromFloat(obstacle.rec.x);
-        // const y: i32 = @intFromFloat(obstacle.rec.y);
-        // const width: i32 = @intFromFloat(obstacle.rec.width);
-        // const height: i32 = @intFromFloat(obstacle.rec.height);
-        // rl.drawRectangle(x, y, width, height, rl.Color.dark_gray);
-
         if (obstacle.texture == null) obstacle.texture = Obstacle.Texture.init();
 
         rl.drawTexturePro(

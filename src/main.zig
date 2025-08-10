@@ -67,23 +67,19 @@ const Missile = struct {
         rl.drawRectangle(@intFromFloat(self.rec.?.x), @intFromFloat(self.rec.?.y), Missile.width, Missile.height, rl.Color.white);
     }
 
-    // Violates Single responsibility. Move should just move. Caller should handle wall and obstacle detection.
-    fn move(self: *Missile, obstacles: *std.BoundedArray(Obstacle, 1024)) !void {
+    fn move(self: *Missile, obstacles: []Obstacle) !void {
         if (self.fired == true) {
             std.debug.assert(self.rec != null);
             self.rec.?.y -= Missile.vel;
             if (utils.detectWall(&self.rec.?, false)) {
                 self.wall_hit = true;
             }
-            for (obstacles.slice(), 0..) |*o, index| {
+            for (obstacles) |*o| {
                 const collided = rl.checkCollisionRecs(self.rec.?, o.rec);
                 if (collided) {
                     POINTS += 1;
                     self.obstacle_hit = true;
                     try o.hit();
-                    if (o.dead) {
-                        _ = obstacles_array.orderedRemove(index);
-                    }
                 }
             }
             rl.drawRectangle(@intFromFloat(self.rec.?.x), @intFromFloat(self.rec.?.y), Missile.width, Missile.height, rl.Color.white);
@@ -97,15 +93,16 @@ const Missile = struct {
 //       to add the initial number of missiles as well.
 
 const Ship = struct {
+    const WeaponsBay = std.BoundedArray(Missile, 1024 * 10);
     const velocity_default = 0.1;
     const velocity_delta = 0.000255;
     rec: rl.Rectangle,
     vel: f32 = Ship.velocity_default,
-    weapons_bay: ?std.BoundedArray(Missile, 1024 * 10) = null,
+    weapons_bay: ?WeaponsBay = null,
 
     fn initWeaponsBay(self: *Ship) !void {
         if (self.weapons_bay == null)
-            self.weapons_bay = try std.BoundedArray(Missile, 1024 * 10).init(0);
+            self.weapons_bay = try WeaponsBay.init(0);
     }
 
     fn handleWeaponFire(self: *Ship) !void {
@@ -119,14 +116,13 @@ const Ship = struct {
 
         for (self.weapons_bay.?.slice(), 0..) |*missile, index| {
             var m: *Missile = missile;
-            try m.move(&obstacles_array);
+            try m.move(obstacles_array.slice());
             if (m.obstacle_hit or m.wall_hit)
                 _ = self.weapons_bay.?.orderedRemove(index);
         }
     }
 
     pub fn handleSpaceshipMovement(self: *Ship) !void {
-        // var dir = 0;
         if (rl.isKeyUp(rl.KeyboardKey.right) and rl.isKeyUp(rl.KeyboardKey.left))
             self.vel = Ship.velocity_default;
 
@@ -144,6 +140,14 @@ const Ship = struct {
 };
 
 // Used for generating obstacles
+
+fn clearDeadEnemies(obstacles: []Obstacle) void {
+    for (obstacles, 0..) |*o, index| {
+        if (o.dead) {
+            _ = obstacles_array.orderedRemove(index);
+        }
+    }
+}
 
 var block_array = [_][25]u32{
     [_]u32{ 0, 0, 1, 1, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 1, 0, 1, 1, 0, 0 },
@@ -198,32 +202,19 @@ fn gameLoop(frame_per_second: u8) !void {
     while (!rl.windowShouldClose()) { // Detect window close button or ESC key
         defer rl.endDrawing();
         animation_frame_counter += 1;
-        switch (obstacles_array.len) {
-            0 => {
-                rl.clearBackground(.black);
-                var out: [256]u8 = undefined;
-                const text = try std.fmt.bufPrintZ(&out, "You go {d} points!\nGame Over", .{POINTS});
-                const font = try rl.getFontDefault();
-                const font_size: f32 = 40;
-                const spacing: f32 = 1.0;
+        if (enableDrawKeyPress) try utils.drawKeyPress();
 
-                const size = rl.measureTextEx(font, text, font_size, spacing);
-                const pos = rl.Vector2{ .x = @as(f32, @floatFromInt(windowWidth)) / 2.0, .y = @as(f32, @floatFromInt(windowHeight)) / 2.0 };
-                const origin = rl.Vector2{ .x = size.x / 2.0, .y = size.y / 2.0 };
-
-                rl.drawTextPro(font, text, pos, origin, 0.0, font_size, spacing, rl.Color.white);
-            },
-            else => {
+        switch (obstacles_array.len > 0) {
+            true => {
                 rl.clearBackground(rl.Color.black);
+
                 rl.drawText(rl.textFormat("Elapsed Time: %02.02f ms", .{rl.getFrameTime() * 1000}), 0, 0, 20, .white);
-
-                if (enableDrawKeyPress) try utils.drawKeyPress();
-
                 rl.drawText(rl.textFormat("Points: %d ", .{POINTS}), 0, 20, 20, .white);
 
                 _ = utils.detectWall(&player_ship.rec, true);
                 try player_ship.handleSpaceshipMovement();
                 try player_ship.handleWeaponFire();
+                clearDeadEnemies(obstacles_array.slice());
 
                 // TODO: Move ship animation logic inside Ship.
                 if (@mod(animation_frame_counter, ship_animation_frame_rate) == 0) {
@@ -249,6 +240,20 @@ fn gameLoop(frame_per_second: u8) !void {
                     0,
                     rl.Color.white,
                 );
+            },
+            else => {
+                rl.clearBackground(.black);
+                var out: [256]u8 = undefined;
+                const text = try std.fmt.bufPrintZ(&out, "You go {d} points!\nGame Over", .{POINTS});
+                const font = try rl.getFontDefault();
+                const font_size: f32 = 40;
+                const spacing: f32 = 1.0;
+
+                const size = rl.measureTextEx(font, text, font_size, spacing);
+                const pos = rl.Vector2{ .x = @as(f32, @floatFromInt(windowWidth)) / 2.0, .y = @as(f32, @floatFromInt(windowHeight)) / 2.0 };
+                const origin = rl.Vector2{ .x = size.x / 2.0, .y = size.y / 2.0 };
+
+                rl.drawTextPro(font, text, pos, origin, 0.0, font_size, spacing, rl.Color.white);
             },
         }
     }
